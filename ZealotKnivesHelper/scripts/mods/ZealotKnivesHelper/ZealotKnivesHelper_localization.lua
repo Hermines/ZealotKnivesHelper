@@ -31,6 +31,36 @@ local localization = {
 		["zh-cn"] = "调试模式",
 	},
 
+	-- display_settings
+	display_settings = {
+		en = "Display Toggle",
+		["zh-cn"] = "显示开关",
+	},
+	always_show = {
+		en = "Always Show",
+		["zh-cn"] = "始终显示",
+	},
+	always_show_description = {
+		en = "When off, no extra crosshairs are shown. The key below toggles this setting in game.",
+		["zh-cn"] = "关闭后不显示额外准星。可用下方绑定的按键在游戏中随时切换本开关。",
+	},
+	always_show_key = {
+		en = "Toggle Key (Press)",
+		["zh-cn"] = "切换按键（按下）",
+	},
+	always_show_key_description = {
+		en = "Pressing this key toggles Always Show on/off.",
+		["zh-cn"] = "按下后切换“始终显示”的开关。",
+	},
+	force_show_key = {
+		en = "Force Show Key (Hold)",
+		["zh-cn"] = "强制显示按键（按住）",
+	},
+	force_show_key_description = {
+		en = "While Always Show is off, holding this key temporarily shows the extra crosshairs; release to hide them again.",
+		["zh-cn"] = "在“始终显示”关闭时，按住该按键期间临时显示额外准星，松开后恢复隐藏。",
+	},
+
 	-- indicator_settings
 	indicator_settings = {
 		en = "Indicator Settings",
@@ -45,6 +75,14 @@ local localization = {
 	max_distance_description = {
 		en = "Only enemies within this distance (from you) are indicated.",
 		["zh-cn"] = "只指示该距离（与你相距）范围内的敌人。",
+	},
+	hide_near = {
+		en = "Hide Nearby Enemies",
+		["zh-cn"] = "近距离不显示",
+	},
+	hide_near_description = {
+		en = "Do not show extra crosshairs for enemies closer than 10 m.",
+		["zh-cn"] = "开启后，与你相距小于 10 米的敌人不显示额外准星。",
 	},
 	max_angle = {
 		en = "Max Angle",

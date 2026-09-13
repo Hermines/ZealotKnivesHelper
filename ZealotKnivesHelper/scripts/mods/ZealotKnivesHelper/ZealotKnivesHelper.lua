@@ -23,6 +23,7 @@ local Managers = Managers
 local mod_settings = {
 	toggle_mod              = mod:get("toggle_mod"),
 	debug_mode              = mod:get("debug_mode"),
+	always_show             = mod:get("always_show"),
 	max_distance            = mod:get("max_distance"),
 	max_angle               = mod:get("max_angle"),
 	dot_size                = mod:get("dot_size"),
@@ -33,6 +34,7 @@ local mod_settings = {
 	lead_multiplier         = mod:get("lead_multiplier"),
 	require_charges         = mod:get("require_charges"),
 	visibility_check        = mod:get("visibility_check"),
+	hide_near               = mod:get("hide_near"),
 	show_boss               = mod:get("show_boss"),
 	color_boss              = mod:get("color_boss"),
 	show_elite              = mod:get("show_elite"),
@@ -48,6 +50,8 @@ local BreedList = mod:io_dofile("ZealotKnivesHelper/scripts/mods/ZealotKnivesHel
 local Context = mod:io_dofile("ZealotKnivesHelper/scripts/mods/ZealotKnivesHelper/game/context")
 local Indicators = mod:io_dofile("ZealotKnivesHelper/scripts/mods/ZealotKnivesHelper/game/indicators")
 local MarkerSync = mod:io_dofile("ZealotKnivesHelper/scripts/mods/ZealotKnivesHelper/draw/marker_sync")
+-- Compatibility patch: game main-path race guard (see compat/main_path_guard.lua)
+mod:io_dofile("ZealotKnivesHelper/scripts/mods/ZealotKnivesHelper/compat/main_path_guard")
 
 -- Indicator result of the latest frame (written by indicators.update, read by marker_sync)
 mod.frame_result = nil
@@ -55,8 +59,13 @@ mod.frame_result = nil
 -- ============================================================================
 -- Indicator settings view (consumed by indicators.lua, derived from DMF settings)
 -- ============================================================================
+-- Defensive view defaults (the init values mirror the data-file default_value;
+-- DMF materializes the real defaults before this table is ever consumed)
 local indicator_settings = {
-	toggle_mod = false,
+	toggle_mod = true,
+	always_show = true,
+	-- Runtime flag driven by the force-show hold key (not a DMF setting)
+	force_show = false,
 	category_show = { boss = true, elite = true, special = true },
 	breed_hidden = {},
 	breed_config = {
@@ -66,37 +75,43 @@ local indicator_settings = {
 		breed_color = {},
 	},
 	max_distance = 50,
-	max_angle = 30,
+	max_angle = 15,
 	dot_size = 6,
-	max_dots = 5,
-	scale_by_distance = true,
+	max_dots = 10,
+	scale_by_distance = false,
 	show_lead = true,
 	lead_multiplier = 1,
 	require_charges = true,
-	visibility_check = false,
+	visibility_check = true,
+	hide_near = true,
 }
 
 mod.indicator_settings = indicator_settings
 
+-- Boolean fallbacks resolve nil to the shipped default: default-on settings use
+-- "~= false", default-off ones "and true or false" -- keep new fields consistent
+-- with their data-file default_value
 local function rebuild_indicator_settings()
-	indicator_settings.toggle_mod = mod_settings.toggle_mod and true or false
+	indicator_settings.toggle_mod = mod_settings.toggle_mod ~= false
+	indicator_settings.always_show = mod_settings.always_show ~= false
 	indicator_settings.max_distance = mod_settings.max_distance or 50
-	indicator_settings.max_angle = mod_settings.max_angle or 30
+	indicator_settings.max_angle = mod_settings.max_angle or 15
 	indicator_settings.dot_size = mod_settings.dot_size or 6
-	indicator_settings.max_dots = mod_settings.max_dots or 5
-	indicator_settings.scale_by_distance = mod_settings.scale_by_distance ~= false
-	indicator_settings.show_lead = mod_settings.show_lead and true or false
+	indicator_settings.max_dots = mod_settings.max_dots or 10
+	indicator_settings.scale_by_distance = mod_settings.scale_by_distance and true or false
+	indicator_settings.show_lead = mod_settings.show_lead ~= false
 	indicator_settings.lead_multiplier = (mod_settings.lead_multiplier or 100) / 100
-	indicator_settings.require_charges = mod_settings.require_charges and true or false
-	indicator_settings.visibility_check = mod_settings.visibility_check and true or false
+	indicator_settings.require_charges = mod_settings.require_charges ~= false
+	indicator_settings.visibility_check = mod_settings.visibility_check ~= false
+	indicator_settings.hide_near = mod_settings.hide_near ~= false
 
 	-- Category toggles and colors
 	local category_show = indicator_settings.category_show
 	local category_color = indicator_settings.breed_config.category_color
 
-	category_show.boss = mod_settings.show_boss and true or false
-	category_show.elite = mod_settings.show_elite and true or false
-	category_show.special = mod_settings.show_special and true or false
+	category_show.boss = mod_settings.show_boss ~= false
+	category_show.elite = mod_settings.show_elite ~= false
+	category_show.special = mod_settings.show_special ~= false
 	category_color.boss = mod_settings.color_boss
 	category_color.elite = mod_settings.color_elite
 	category_color.special = mod_settings.color_special
@@ -118,7 +133,7 @@ local function rebuild_indicator_settings()
 	end
 
 	indicator_settings.breed_config.category_show = category_show
-	indicator_settings.dot_opacity = mod_settings.dot_opacity
+	indicator_settings.dot_opacity = mod_settings.dot_opacity or 1
 end
 
 -- ============================================================================
@@ -131,6 +146,7 @@ end
 
 mod.on_disabled = function(initial_call)
 	mod.frame_result = nil
+	indicator_settings.force_show = false
 	Indicators.clear_cache()
 	Context.clear_session()
 	MarkerSync.clear()
@@ -145,6 +161,7 @@ mod.on_game_state_changed = function(status, state_name)
 		rebuild_indicator_settings()
 	else
 		mod.frame_result = nil
+		indicator_settings.force_show = false
 		Indicators.clear_cache()
 		Context.clear_session()
 		MarkerSync.clear()
@@ -156,6 +173,13 @@ mod.on_setting_changed = function(setting_id)
 		mod_settings[setting_id] = mod:get(setting_id)
 	end
 
+	-- Rebinding/unbinding the force-show key unregisters the old keybind mid-hold,
+	-- so its release event is lost; clear the stale hold (a rebind to the same
+	-- still-held key re-fires on the next check_keybinds tick anyway)
+	if setting_id == "force_show_key" then
+		indicator_settings.force_show = false
+	end
+
 	-- Per-breed settings (breed_show_* / breed_color_*) are re-read in the rebuild
 	rebuild_indicator_settings()
 
@@ -164,6 +188,28 @@ mod.on_setting_changed = function(setting_id)
 	-- on targets computed with the old settings
 	mod.frame_result = nil
 	Indicators.clear_cache()
+end
+
+-- ============================================================================
+-- Keybind callbacks (DMF function_call keybinds, only fired while the mod is
+-- enabled). DMF invokes them as mod.<function_name>(keybind_is_pressed) --
+-- safe_call_nr does NOT pass the mod object, so the flag is the first argument
+-- ============================================================================
+
+--- "Always Show" toggle key (keybind_trigger = "pressed"): flips the persisted
+--- setting; notify = true routes through on_setting_changed like a manual change
+--- in the options view
+mod.on_always_show_key = function()
+	mod:set("always_show", not mod:get("always_show"), true)
+end
+
+--- "Force Show" hold key (keybind_trigger = "held"): called with true on press and
+--- false on release. While held, the display gate in indicators.update is bypassed
+--- (only effective when "Always Show" is off, where it re-enables the pipeline).
+--- Stale holds are cleared on disable / session switch / rebind (release events
+--- are not delivered in those states)
+mod.on_force_show_key = function(keybind_is_pressed)
+	indicator_settings.force_show = keybind_is_pressed == true
 end
 
 -- ============================================================================
@@ -243,7 +289,19 @@ local function render_refresh()
 	local now = time_manager and time_manager:has_timer("main") and time_manager:time("main") or nil
 
 	if not now or now - result.t > 0.25 then
-		-- Freshness guard: stop refreshing when the fixed frame stops updating
+		-- Freshness guard: stop refreshing when the fixed frame stops updating.
+		-- The fixed frame stops for good when the local player unit is despawned
+		-- (death despawns the corpse ~5 s in while GameplayStateRun continues), so
+		-- its fixed_update hook is gone and sync can no longer reclaim the markers:
+		-- they would stay frozen at their last positions until respawn. Clear them
+		-- here once instead; a present-but-stale player (hitch) is left untouched.
+		local player = Managers.player and Managers.player:local_player(1)
+
+		if not player or not player:unit_is_alive() then
+			mod.frame_result = nil
+			MarkerSync.clear()
+		end
+
 		return
 	end
 

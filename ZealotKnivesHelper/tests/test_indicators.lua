@@ -94,15 +94,18 @@ _G.Managers = {
 }
 
 local mock_mod = {
-	-- Settings view read at runtime by refresh_positions / update
+	-- Indicator settings view read at runtime by refresh_positions / update
 	indicator_settings = {
 		toggle_mod = true,
+		always_show = true,
+		force_show = false,
 		show_lead = true,
 		lead_multiplier = 1,
 		dot_size = 6,
 		dot_opacity = 1,
 		category_show = { boss = true, elite = true, special = true },
 		breed_hidden = {},
+		hide_near = true,
 	},
 }
 
@@ -494,6 +497,9 @@ local function with_update_settings(fn)
 		visibility_check = settings.visibility_check,
 		max_distance = settings.max_distance,
 		max_angle = settings.max_angle,
+		always_show = settings.always_show,
+		force_show = settings.force_show,
+		hide_near = settings.hide_near,
 	}
 
 	settings.max_dots = 1
@@ -502,6 +508,9 @@ local function with_update_settings(fn)
 	settings.visibility_check = false
 	settings.max_distance = 40
 	settings.max_angle = 30
+	settings.always_show = true
+	settings.force_show = false
+	settings.hide_near = false
 
 	fn()
 
@@ -511,6 +520,9 @@ local function with_update_settings(fn)
 	settings.visibility_check = saved.visibility_check
 	settings.max_distance = saved.max_distance
 	settings.max_angle = saved.max_angle
+	settings.always_show = saved.always_show
+	settings.force_show = saved.force_show
+	settings.hide_near = saved.hide_near
 end
 
 H.case("update: incumbent hysteresis -- no flicker at the quota boundary", function()
@@ -625,6 +637,83 @@ H.case("update: dropping off enters linger -- faded output, recovery on reappear
 		result = Indicators.update(0.11, 301.1)
 
 		H.assert_equal(#result.targets, 0, "no longer output after the linger expires")
+	end)
+end)
+
+H.case("update: display gate -- always_show off hides everything, force_show bypasses it", function()
+	with_update_settings(function()
+		Indicators.clear_cache()
+
+		broadphase_units = { make_enemy(Vector3(0, 20, 1.7)) }
+		mock_mod.indicator_settings.always_show = false
+
+		local result = Indicators.update(0.11, 500)
+
+		H.assert_equal(#result.targets, 0, "always_show off: no targets (main module syncs an empty list, markers removed)")
+
+		mock_mod.indicator_settings.force_show = true
+
+		result = Indicators.update(0.11, 500.11)
+
+		H.assert_equal(#result.targets, 1, "force-show key held: full pipeline runs again")
+
+		mock_mod.indicator_settings.force_show = false
+
+		result = Indicators.update(0.11, 500.22)
+
+		H.assert_equal(#result.targets, 0, "force-show key released: hidden again")
+	end)
+end)
+
+H.case("update: hide_near -- close enemies hidden, incumbents get the edge tolerance", function()
+	with_update_settings(function()
+		Indicators.clear_cache()
+
+		local settings_view = mock_mod.indicator_settings
+		settings_view.hide_near = true
+
+		-- 8 m enemy: inside the hide radius -> not shown
+		local unit_a = make_enemy(Vector3(0, 8, 1.7))
+		broadphase_units = { unit_a }
+
+		local result = Indicators.update(0.11, 600)
+
+		H.assert_equal(#result.targets, 0, "enemy at 8 m: hidden while the filter is on")
+
+		-- 12 m enemy is shown normally
+		local unit_b = make_enemy(Vector3(0, 12, 1.7))
+		broadphase_units = { unit_a, unit_b }
+
+		result = Indicators.update(0.11, 600.11)
+
+		H.assert_equal(#result.targets, 1, "enemy at 12 m: shown")
+		H.assert_equal(result.targets[1].unit, unit_b, "the 12 m enemy is the target")
+
+		-- Incumbent B walks to 8.5 m: kept until clearly inside (tolerance = 10 - 2 m)
+		unit_b.__head = Vector3(0, 8.5, 1.7)
+
+		result = Indicators.update(0.11, 600.22)
+
+		H.assert_equal(#result.targets, 1, "incumbent kept within the hide-radius tolerance")
+
+		-- At 7.9 m B finally drops off -> lingers with a fade
+		unit_b.__head = Vector3(0, 7.9, 1.7)
+
+		result = Indicators.update(0.11, 600.33)
+
+		H.assert_equal(#result.targets, 1, "the dropped incumbent lingers (fading out)")
+		H.assert_true(result.targets[1].linger == true, "linger flag set")
+
+		-- Filter off again: the close enemy is shown as usual (clear_cache isolates
+		-- the interrupted linger of B)
+		Indicators.clear_cache()
+		settings_view.hide_near = false
+		broadphase_units = { unit_a }
+
+		result = Indicators.update(0.11, 600.44)
+
+		H.assert_equal(#result.targets, 1, "filter off: the close enemy is shown again")
+		H.assert_equal(result.targets[1].unit, unit_a, "the 8 m enemy is the target")
 	end)
 end)
 

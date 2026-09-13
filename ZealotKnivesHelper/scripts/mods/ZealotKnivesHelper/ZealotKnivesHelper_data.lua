@@ -79,6 +79,35 @@ local widgets = {
 		},
 	},
 	{
+		setting_id = "display_settings",
+		type = "group",
+		sub_widgets = {
+			{
+				setting_id = "always_show",
+				type = "checkbox",
+				default_value = true,
+			},
+			{
+				setting_id = "always_show_key",
+				type = "keybind",
+				default_value = {},
+				keybind_global = false,
+				keybind_trigger = "pressed",
+				keybind_type = "function_call",
+				function_name = "on_always_show_key",
+			},
+			{
+				setting_id = "force_show_key",
+				type = "keybind",
+				default_value = {},
+				keybind_global = false,
+				keybind_trigger = "held",
+				keybind_type = "function_call",
+				function_name = "on_force_show_key",
+			},
+		},
+	},
+	{
 		setting_id = "indicator_settings",
 		type = "group",
 		sub_widgets = {
@@ -89,6 +118,11 @@ local widgets = {
 				range = { 5, 100 },
 				unit_text = "meter",
 				decimals_number = 0,
+			},
+			{
+				setting_id = "hide_near",
+				type = "checkbox",
+				default_value = true,
 			},
 			{
 				setting_id = "max_angle",

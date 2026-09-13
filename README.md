@@ -23,6 +23,11 @@ extra dot crosshair for every **boss / elite / specialist** enemy in range, indi
   max range.
 - **Range & angle**: only enemies within the configured distance and angle from the
   crosshair direction are indicated.
+- **Display toggle & hotkeys**: "Always Show" master switch (off = no dots) with two
+  keybinds — a press key that toggles Always Show in game, and a hold key that
+  temporarily force-shows the dots while "Always Show" is off (release hides again).
+- **Hide nearby enemies** (on by default): no dots for enemies closer than 10 m — at
+  point-blank range the dots sit on top of the enemy and the plain crosshair is enough.
 - **Per-breed customization**: every enemy breed can be toggled and colored individually;
   the three categories (boss / elite / specialist) each have their own switch and default color.
 
@@ -45,7 +50,8 @@ Configure it in-game under `Options → Mod Settings → Zealot Knives Helper`.
 | Group | Settings |
 | --- | --- |
 | Mod Settings | Enable toggle, debug mode |
-| Indicator Settings | Max distance (m), max angle (deg), max dots, dot size/opacity, scale by distance, lead prediction + multiplier, hide when out of knives, line of sight check |
+| Display Toggle | Always show (on by default), toggle key (press), force-show key (hold) |
+| Indicator Settings | Max distance (m), hide nearby enemies (fixed 10 m), max angle (deg), max dots, dot size/opacity, scale by distance, lead prediction + multiplier, hide when out of knives, line of sight check |
 | Enemy Categories | Per-category switch and color for Boss / Elite / Specialist; per-breed switch and color |
 
 ## File Structure
@@ -70,6 +76,10 @@ ZealotKnivesHelper/
 │   │   │                             camera / physics world / first-person position / LOS
 │   │   └── indicators.lua            per fixed frame: filter → ballistic solve → stack fade →
 │   │                                 world-space targets
+│   ├── compat/
+│   │   └── main_path_guard.lua       game main-path race guard (keeps mods that replace the
+│   │                                 player unit mid-run, e.g. character changers, from
+│   │                                 crashing the game)
 │   └── draw/
 │       ├── marker_template.lua       dot world_marker template (plugs into the engine's
 │       │                             world marker system)
@@ -130,3 +140,36 @@ under stubbed game globals.
 - **Line of sight check** (optional): dual sample points (head, then spine) with the
   minion line-of-sight collision filter; hits on the target unit itself are treated as
   clear. Raycasts fail open.
+- **Main-path crash guard**: the game's main-path progress update hard-crashes when a
+  player unit is replaced mid-run and has no main-path group index yet (no respawn
+  beacon on the map, no navmesh position, no previous frame, no teammates). Vanilla
+  never hits this, but mods that replace the player unit mid-run — e.g.
+  InstantCharacterChange hot-switching characters on beacon-less maps like the
+  shooting range — do. This mod shields that one update call so the race can no
+  longer take the game down (one throttled chat line when it fires).
+
+## Version history
+
+### 1.0.1
+
+- **Added**: combat display control - "Always Show" (on by default) with a press key
+  to toggle it in game, and a hold key that force-shows the dots while "Always Show"
+  is off (bind it to your block key to show dots only while blocking).
+- **Added**: "Hide Nearby" (on by default) - no dots for enemies within 10 m, so
+  point-blank melee stays clean. Note for upgraders: dots now disappear inside 10 m
+  by default.
+- **Fixed**: dots were silently hidden in the top of the range - the engine's
+  max-distance cutoff is measured against the marker position (the aim point, i.e.
+  target + 10 m trajectory extension + lead), so with the default 50 m setting
+  nothing was drawn beyond ~40 m. The engine cutoff is now re-based onto target
+  distance with lead headroom.
+- **Fixed**: dots could stay frozen on screen after dying (the game despawns the
+  player unit ~5 s into the death sequence while the mission continues). They are
+  now reclaimed while dead and rebuilt on respawn.
+- **Added**: main-path crash guard (see Technical Notes) - fixes game crashes when
+  other mods replace the player unit mid-run, e.g. InstantCharacterChange character
+  switching in the shooting range / psykhanium.
+
+### 1.0.0
+
+- Initial release.

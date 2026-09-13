@@ -66,6 +66,10 @@ local _displayed = {} -- [unit] = target table, last frame's final display list 
 local _displayed_swap = {} -- rebuild buffer for _displayed (swapped every frame)
 local _linger = {} -- [unit] = {target = target table captured at drop time, drop_t = drop moment}
 local _last_debug_count = -1
+-- Scratch entry for TargetFilter.should_show, rewritten per enemy in the update
+-- loop. should_show consumes it synchronously and never retains it, so one shared
+-- table avoids allocating a new one per enemy per fixed frame.
+local _filter_entry = {}
 
 -- Smoothness probe (debug_mode): every 5s, counts render-frame refreshes and the
 -- actual head-bone position changes of the first target. head_moves ~= the
@@ -253,7 +257,7 @@ local function compute_aim_position(unit, now, origin, target_pos, target_veloci
 	-- Lead: estimate the flight time from the current position, predict the future
 	-- position, then re-solve (2 iterations)
 	-- (target_velocity is a scalar table {x,y,z}, see get_target_velocity)
-	if settings.show_lead and target_velocity then
+	if settings.show_lead ~= false and target_velocity then
 		local multiplier = settings.lead_multiplier or 1
 
 		for _ = 1, 2 do
@@ -330,8 +334,19 @@ local function update(dt, t)
 
 	local settings = mod.indicator_settings
 
-	if not settings or not settings.toggle_mod then
+	-- (== false rather than "not": nil counts as on, same nil direction as the
+	-- rebuild fallback)
+	if not settings or settings.toggle_mod == false then
 		debug_stage("toggle_mod=off", main_time)
+
+		return result
+	end
+
+	-- Display gate: "Always Show" off and the force-show hold key not pressed. The
+	-- empty result makes marker_sync remove all of the mod's markers (releasing the
+	-- hold key or toggling back on re-runs the full pipeline immediately)
+	if settings.always_show == false and not settings.force_show then
+		debug_stage("always_show=off", main_time)
 
 		return result
 	end
@@ -358,7 +373,7 @@ local function update(dt, t)
 		return result
 	end
 
-	if settings.require_charges and Context.get_knives_count(player_unit) <= 0 then
+	if settings.require_charges ~= false and Context.get_knives_count(player_unit) <= 0 then
 		debug_stage("no knives remaining", main_time)
 
 		return result
@@ -422,22 +437,22 @@ local function update(dt, t)
 					angle_dot = Vector3.dot(camera_fwd, to_target) / distance
 				end
 
-				local filter_entry = {
-					breed_name = entry.breed_name,
-					category = entry.category,
-					distance = distance,
-					angle_dot = angle_dot,
-				}
+				local filter_entry = _filter_entry
+
+				filter_entry.breed_name = entry.breed_name
+				filter_entry.category = entry.category
+				filter_entry.distance = distance
+				filter_entry.angle_dot = angle_dot
 
 				if TargetFilter.should_show(filter_entry, settings, is_incumbent) then
 					-- Optional visibility check
 					local visible = true
 
-					if settings.visibility_check then
+					if settings.visibility_check ~= false then
 						visible = Context.is_visible(unit, camera_pos, target_pos)
 					end
 
-					local velocity = settings.show_lead and get_target_velocity(unit) or nil
+					local velocity = settings.show_lead ~= false and get_target_velocity(unit) or nil
 					local aim_position, flight_time, pitch, solve_horizontal, solve_height =
 						compute_aim_position(unit, t, origin, target_pos, velocity, settings)
 
@@ -478,7 +493,7 @@ local function update(dt, t)
 	TargetFilter.sort(targets)
 
 	-- Cap the display count
-	local max_dots = settings.max_dots or 5
+	local max_dots = settings.max_dots or 10
 
 	for i = #targets, max_dots + 1, -1 do
 		targets[i] = nil
@@ -554,12 +569,16 @@ local function update(dt, t)
 		end
 	end
 
-	-- debug_print checks the debug flag itself; log only on count changes to avoid spam
-	if #targets ~= _last_debug_count then
-		debug_stage("enemies=" .. enemy_count .. ", targets=" .. #targets, main_time)
-		_last_debug_count = #targets
-	else
-		debug_stage("enemies=" .. enemy_count, main_time)
+	-- debug_print checks the debug flag itself; log only on count changes to avoid
+	-- spam. Guarded here so the message strings are not concatenated (and turned
+	-- into garbage) on every fixed frame with debug_mode off.
+	if mod.settings and mod.settings.debug_mode then
+		if #targets ~= _last_debug_count then
+			debug_stage("enemies=" .. enemy_count .. ", targets=" .. #targets, main_time)
+			_last_debug_count = #targets
+		else
+			debug_stage("enemies=" .. enemy_count, main_time)
+		end
 	end
 
 	return result
@@ -585,7 +604,7 @@ end
 local function refresh_positions(targets, origin_override)
 	local settings = mod.indicator_settings
 
-	if not settings or not settings.toggle_mod or not targets or #targets == 0 then
+	if not settings or settings.toggle_mod == false or not targets or #targets == 0 then
 		return targets
 	end
 
@@ -605,7 +624,7 @@ local function refresh_positions(targets, origin_override)
 		end
 	end
 
-	local show_lead = settings.show_lead
+	local show_lead = settings.show_lead ~= false
 	local probe_enabled = mod.settings ~= nil and mod.settings.debug_mode == true
 	local probe_now = nil
 

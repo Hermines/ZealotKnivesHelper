@@ -10,10 +10,12 @@
 	                          (Vector3.dot(fwd, dir))
 
 	Settings (cached from DMF settings by the main module):
-	  category_show   table   { boss = bool, elite = bool, special = bool }
-	  breed_hidden    table   { [breed_name] = bool } (true hides that breed individually)
-	  max_distance    number  meters
-	  max_angle       number  degrees
+	  category_show       table   { boss = bool, elite = bool, special = bool }
+	  breed_hidden        table   { [breed_name] = bool } (true hides that breed individually)
+	  max_distance        number  meters
+	  max_angle           number  degrees
+	  hide_near           bool    hide enemies closer than HIDE_NEAR_DISTANCE (fixed 10 m;
+	                              nil counts as on, the shipped default)
 ]]
 
 local TargetFilter = {}
@@ -29,6 +31,10 @@ local CATEGORY_PRIORITY = {
 -- flicker in and out of the display list on small movements or view changes
 local DISPLAY_EDGE_TOLERANCE_ANGLE = 2
 local DISPLAY_EDGE_TOLERANCE_DISTANCE = 2
+
+-- Hide-nearby radius (meters): with hide_near on, enemies closer than this are not
+-- indicated (fixed by design; at point-blank range the dots sit on top of the enemy)
+local HIDE_NEAR_DISTANCE = 10
 
 --- Classify breed data; returns a category name only for boss/elite/specialist, else nil
 ---@param breed table game breed data (is_boss / tags.elite / tags.special)
@@ -71,6 +77,20 @@ function TargetFilter.should_show(entry, settings, is_incumbent)
 
 	if settings.breed_hidden and settings.breed_hidden[entry.breed_name] then
 		return false
+	end
+
+	local hide_near_distance = settings.hide_near ~= false and HIDE_NEAR_DISTANCE or nil
+
+	if hide_near_distance then
+		if is_incumbent then
+			-- Incumbents only drop once clearly inside the hide radius (same anti-flicker
+			-- tolerance as max_distance below)
+			hide_near_distance = hide_near_distance - DISPLAY_EDGE_TOLERANCE_DISTANCE
+		end
+
+		if entry.distance < hide_near_distance then
+			return false
+		end
 	end
 
 	local max_distance = settings.max_distance

@@ -26,6 +26,7 @@ local base_settings = {
 	breed_hidden = {},
 	max_distance = 40,
 	max_angle = 30,
+	hide_near = false, -- explicit: nil now counts as on (the shipped default)
 }
 
 local function make_entry(overrides)
@@ -89,6 +90,28 @@ H.case("should_show: incumbent edge tolerance", function()
 	H.assert_false(TargetFilter.should_show(make_entry({ distance = 43 }), base_settings, true), "incumbent at 43 m beyond tolerance")
 	H.assert_true(TargetFilter.should_show(make_entry({ angle_dot = math.cos(math.rad(32)) }), base_settings, true), "incumbent at 32 degrees kept within tolerance")
 	H.assert_false(TargetFilter.should_show(make_entry({ angle_dot = math.cos(math.rad(34)) }), base_settings, true), "incumbent at 34 degrees beyond tolerance")
+end)
+
+H.case("should_show: hide nearby enemies (hide_near, fixed 10 m)", function()
+	local s = {
+		category_show = { boss = true, elite = true, special = true },
+		breed_hidden = {},
+		max_distance = 40,
+		max_angle = 30,
+		hide_near = true,
+	}
+
+	-- Feature off (base_settings sets hide_near = false): close enemies shown as before
+	H.assert_true(TargetFilter.should_show(make_entry({ distance = 5 }), base_settings), "feature off: close enemy shown")
+	-- Feature on: inside the fixed 10 m radius hidden, at/beyond it shown
+	H.assert_false(TargetFilter.should_show(make_entry({ distance = 9.9 }), s), "inside the hide radius: not shown")
+	H.assert_true(TargetFilter.should_show(make_entry({ distance = 10 }), s), "at the hide radius boundary: shown")
+	H.assert_true(TargetFilter.should_show(make_entry({ distance = 12 }), s), "outside the hide radius: shown")
+	-- Incumbents get the same 2 m edge tolerance as max_distance (mirrored):
+	-- kept until clearly inside the radius, non-incumbents are hidden immediately
+	H.assert_true(TargetFilter.should_show(make_entry({ distance = 8.5 }), s, true), "incumbent kept within tolerance")
+	H.assert_false(TargetFilter.should_show(make_entry({ distance = 7.9 }), s, true), "incumbent beyond tolerance: dropped")
+	H.assert_false(TargetFilter.should_show(make_entry({ distance = 8.5 }), s), "non-incumbent inside the radius: hidden")
 end)
 
 H.case("sort: sort_distance takes priority over distance (incumbent margin)", function()

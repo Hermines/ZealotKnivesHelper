@@ -387,7 +387,10 @@ H.case("sync: engine clone gets max_distance/scale_settings, never fade_settings
 
 	local marker = fake_element._markers_by_id[1]
 
-	H.assert_equal(marker.template.max_distance, 37, "clone refreshes max_distance from settings")
+	-- The engine cutoff measures the MARKER (aim point = target + ~10 m + lead) distance, so
+	-- the clone value is re-based onto target distance: setting + margin (see
+	-- marker_sync MAX_DISTANCE_MARGIN); 37 + 30 = 67
+	H.assert_equal(marker.template.max_distance, 67, "clone gets max_distance re-based onto target distance (setting + margin)")
 	H.assert_true(marker.template.scale_settings ~= nil, "clone gets scale_settings when scaling is on")
 	H.assert_nil(marker.template.fade_settings, "no fade_settings: max_distance is a hard cutoff, engine distance fade is not configured")
 

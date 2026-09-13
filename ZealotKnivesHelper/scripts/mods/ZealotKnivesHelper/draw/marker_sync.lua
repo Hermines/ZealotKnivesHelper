@@ -41,6 +41,23 @@ local SCALE_SETTINGS = {
 local _unit_markers = {} -- [unit] = {id, data}
 local _element = nil -- world marker element last used by sync (reused by render-frame refresh)
 
+-- The engine cuts markers off at template.max_distance measured from the camera to
+-- the MARKER position (hud_element_world_markers _calculate_markers), and the marker
+-- position is the aim point: the target plus the ~10 m trajectory extension
+-- (indicators AIM_POINT_EXTENSION) plus the lead displacement. The mod's own
+-- max_distance setting filters by TARGET distance, so writing the raw value here
+-- would silently hide dots in the top of the range (with the 50 m default nothing
+-- was drawn beyond ~40 m). The margin re-bases the engine cutoff onto target
+-- distance: 10 m aim extension + 2 m incumbent edge tolerance (target_filter
+-- DISPLAY_EDGE_TOLERANCE_DISTANCE) + 18 m lead headroom. The lead displacement
+-- compounds (the lead solve iterates and flight time grows with distance), so 18 m
+-- covers retreating targets up to ~13 m/s at the 100% lead multiplier and ~8.5 m/s
+-- at 150% (measured with the solver over the whole admitted band at the default
+-- 50 m setting; at larger settings flight time grows and the covered speed drops
+-- (~7 m/s at 75 m, ~5 m/s at 100 m); only leap-speed transients can still pop a dot
+-- at the extreme edge. Keep it in sync with those two constants when they change.
+local MAX_DISTANCE_MARGIN = 30
+
 --- Build the aim point vector from the target table's scalar components (engine
 --- objects must not cross the fixed-frame/render-frame boundary; the target table
 --- carries scalars across frames and Vector3 is always built at the store site in
@@ -90,7 +107,7 @@ local function refresh_marker_template(marker, settings)
 		return
 	end
 
-	template.max_distance = settings.max_distance or 50
+	template.max_distance = (settings.max_distance or 50) + MAX_DISTANCE_MARGIN
 	template.scale_settings = settings.scale_by_distance and SCALE_SETTINGS or nil
 end
 
