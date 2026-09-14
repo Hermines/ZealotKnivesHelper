@@ -116,7 +116,8 @@ local function rebuild_indicator_settings()
 	category_color.elite = mod_settings.color_elite
 	category_color.special = mod_settings.color_special
 
-	-- Per-breed toggles and colors (individually set; fall back to the category color)
+	-- Per-breed toggles and colors; "use custom color" off stores nil so
+	-- BreedConfig.color falls back to the category color
 	local breed_hidden = indicator_settings.breed_hidden
 	local breed_show = indicator_settings.breed_config.breed_show
 	local breed_color = indicator_settings.breed_config.breed_color
@@ -124,11 +125,11 @@ local function rebuild_indicator_settings()
 	for _, category in ipairs({ "boss", "elite", "special" }) do
 		for _, breed_name in ipairs(BreedList.categories[category]) do
 			local show_value = mod:get("breed_show_" .. breed_name)
-			local color_value = mod:get("breed_color_" .. breed_name)
+			local use_custom_color = mod:get("use_custom_color_" .. breed_name) ~= false
 
 			breed_show[breed_name] = show_value ~= false
-			breed_color[breed_name] = color_value
 			breed_hidden[breed_name] = show_value == false
+			breed_color[breed_name] = use_custom_color and mod:get("breed_color_" .. breed_name) or nil
 		end
 	end
 
@@ -180,7 +181,8 @@ mod.on_setting_changed = function(setting_id)
 		indicator_settings.force_show = false
 	end
 
-	-- Per-breed settings (breed_show_* / breed_color_*) are re-read in the rebuild
+	-- Per-breed settings (breed_show_* / use_custom_color_* / breed_color_*) are
+	-- re-read in the rebuild
 	rebuild_indicator_settings()
 
 	-- Invalidate the pre-change snapshot: view input is processed before the HUD

@@ -3,13 +3,16 @@
 	with luajit)
 
 	"Show this breed's dot" = category toggle AND breed toggle
-	"Dot color"             = breed color (inherits the category color by default)
+	"Dot color"             = breed color, or the category color when the breed's
+	                          "use custom color" toggle is off (the main module
+	                          stores nil for such breeds)
 
 	Config (built from cached DMF settings by the main module):
 	  category_show  { boss = bool, elite = bool, special = bool }
 	  category_color { boss = {a,r,g,b}, ... }
 	  breed_show     { [breed_name] = bool }          missing means true
-	  breed_color    { [breed_name] = {a,r,g,b} }     missing falls back to the category color
+	  breed_color    { [breed_name] = {a,r,g,b} }     missing/nil falls back to the
+	                                                  category color
 ]]
 
 local BreedConfig = {}

@@ -170,6 +170,14 @@ local localization = {
 		en = "Dot Color",
 		["zh-cn"] = "准星颜色",
 	},
+	use_custom_color = {
+		en = "Use Custom Color",
+		["zh-cn"] = "使用自定义颜色",
+	},
+	use_custom_color_description = {
+		en = "When off, this enemy type uses its category's dot color instead.",
+		["zh-cn"] = "关闭后，该敌人类型改用所属类别的准星颜色。",
+	},
 
 	-- unit texts
 	meter = {

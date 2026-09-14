@@ -40,4 +40,13 @@ H.case("color fallback chain", function()
 	H.assert_equal(BreedConfig.color("anything", "unknown", nil)[1], 255, "no config falls back to white (alpha=255)")
 end)
 
+H.case("color: use-custom-color off (nil breed color entry) follows the category color", function()
+	local cfg = {
+		category_color = { elite = { 255, 1, 2, 3 } },
+		breed_color = { renegade_sniper = nil },
+	}
+
+	H.assert_equal(BreedConfig.color("renegade_sniper", "elite", cfg)[2], 1, "nil breed color entry follows the category color")
+end)
+
 print("")

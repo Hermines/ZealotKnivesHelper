@@ -29,7 +29,10 @@ extra dot crosshair for every **boss / elite / specialist** enemy in range, indi
 - **Hide nearby enemies** (on by default): no dots for enemies closer than 10 m — at
   point-blank range the dots sit on top of the enemy and the plain crosshair is enough.
 - **Per-breed customization**: every enemy breed can be toggled and colored individually;
-  the three categories (boss / elite / specialist) each have their own switch and default color.
+  the three categories (boss / elite / specialist) each have their own switch and default
+  color. Each breed also has a "Use Custom Color" toggle — turn it off to make that breed
+  follow its category's color (change the category color once instead of recoloring every
+  breed by hand).
 
 ## Installation
 
@@ -52,7 +55,7 @@ Configure it in-game under `Options → Mod Settings → Zealot Knives Helper`.
 | Mod Settings | Enable toggle, debug mode |
 | Display Toggle | Always show (on by default), toggle key (press), force-show key (hold) |
 | Indicator Settings | Max distance (m), hide nearby enemies (fixed 10 m), max angle (deg), max dots, dot size/opacity, scale by distance, lead prediction + multiplier, hide when out of knives, line of sight check |
-| Enemy Categories | Per-category switch and color for Boss / Elite / Specialist; per-breed switch and color |
+| Enemy Categories | Per-category switch and color for Boss / Elite / Specialist; per-breed switch, custom-color toggle (off = follow the category color), and color |
 
 ## File Structure
 
@@ -149,6 +152,14 @@ under stubbed game globals.
   longer take the game down (one throttled chat line when it fires).
 
 ## Version history
+
+### 1.0.2
+
+- **Added**: per-breed "Use Custom Color" toggle - turn it off to make an enemy type
+  follow its category's dot color. Before this, the category color pickers had no
+  effect because every breed always kept its own (defaulted) color. Existing
+  per-breed colors are untouched: the toggle is on by default, so nothing changes
+  for upgraders until you opt in per breed.
 
 ### 1.0.1
 

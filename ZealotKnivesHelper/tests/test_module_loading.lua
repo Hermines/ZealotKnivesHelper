@@ -174,6 +174,7 @@ H.case("localization: tooltips use the DMF _description suffix (auto-lookup key)
 		"always_show_key",
 		"force_show_key",
 		"hide_near",
+		"use_custom_color",
 	}) do
 		H.assert_true(localization[setting_id .. "_description"] ~= nil,
 			setting_id .. "_description should exist (DMF looks up <setting_id>_description)")
@@ -231,6 +232,104 @@ H.case("keybind callbacks: toggle flips always_show via set(..., notify), hold k
 
 	mod.get, mod.set = saved_get, saved_set
 end)
+
+-- ---------------------------------------------------------------------------
+-- Per-breed "use custom color": unchecking it makes that breed follow its
+-- category's dot color (the category color pickers were dead settings before --
+-- the per-breed color default always won). The two cases below run with the
+-- breeds stub populated, so the data file generates real breed widgets and the
+-- main file's rebuild loop has breeds to iterate; stubs restored afterwards.
+-- ---------------------------------------------------------------------------
+
+local saved_breed_util = require_stubs["scripts/utilities/breed"]
+local saved_breeds = require_stubs["scripts/settings/breed/breeds"]
+
+require_stubs["scripts/utilities/breed"] = {
+	is_minion = function()
+		return true
+	end,
+}
+require_stubs["scripts/settings/breed/breeds"] = {
+	zkh_test_bulwark = { unit_template_name = "minion", faction_name = "renegade", tags = { elite = true } },
+	zkh_test_raider = { unit_template_name = "minion", faction_name = "chaos", tags = { elite = true } },
+}
+
+H.case("data file: breed widgets nest use_custom_color (default true) above the color picker", function()
+	local data = H.load("scripts/mods/ZealotKnivesHelper/ZealotKnivesHelper_data")
+
+	local function find_widget(widgets, setting_id)
+		for _, widget in ipairs(widgets or {}) do
+			if widget.setting_id == setting_id then
+				return widget
+			end
+		end
+
+		return nil
+	end
+
+	local enemy_group = find_widget(data.options.widgets, "enemy_settings")
+	H.assert_true(enemy_group ~= nil, "enemy_settings group exists")
+
+	local elite_toggle = find_widget(enemy_group and enemy_group.sub_widgets, "show_elite")
+	H.assert_true(elite_toggle ~= nil, "show_elite toggle exists")
+
+	-- Category color picker stays directly under the category toggle
+	local elite_color = find_widget(elite_toggle and elite_toggle.sub_widgets, "color_elite")
+	H.assert_true(elite_color ~= nil, "category color picker still directly under the category toggle")
+
+	-- Breed widget: show toggle -> use_custom_color toggle -> color picker
+	local breed_widget = find_widget(elite_toggle and elite_toggle.sub_widgets, "breed_show_zkh_test_bulwark")
+	H.assert_true(breed_widget ~= nil, "breed widget generated for the stub breed")
+
+	local use_custom = find_widget(breed_widget and breed_widget.sub_widgets, "use_custom_color_zkh_test_bulwark")
+	H.assert_true(use_custom ~= nil, "use_custom_color widget nested under the breed show toggle")
+	H.assert_equal(use_custom and use_custom.type, "checkbox", "use_custom_color is a checkbox")
+	H.assert_true(use_custom and use_custom.default_value == true, "use_custom_color defaults to true (upgraders keep their per-breed colors)")
+
+	local breed_color = find_widget(use_custom and use_custom.sub_widgets, "breed_color_zkh_test_bulwark")
+	H.assert_true(breed_color ~= nil, "color picker nested under use_custom_color")
+	H.assert_equal(breed_color and breed_color.default_value, mock_mod.category_default_colors.elite, "breed color default is the category default color")
+end)
+
+H.case("main file rebuild: use_custom_color off -> nil breed color -> BreedConfig follows the category color", function()
+	local mod = get_mod("ZealotKnivesHelper")
+	local saved_get = mock_mod.get
+	local stored = {
+		color_elite = { 255, 1, 2, 3 },
+		breed_show_zkh_test_raider = true,
+		use_custom_color_zkh_test_raider = false, -- follows the category color
+		breed_color_zkh_test_raider = { 255, 9, 8, 7 },
+		breed_show_zkh_test_bulwark = true,
+		use_custom_color_zkh_test_bulwark = true, -- keeps its custom color
+		breed_color_zkh_test_bulwark = { 255, 4, 5, 6 },
+	}
+
+	function mock_mod.get(_, id)
+		return stored[id]
+	end
+
+	-- Fresh main-file load: its BreedList closure collects the stub breeds, and
+	-- the settings snapshot picks up the stored category color
+	H.load("scripts/mods/ZealotKnivesHelper/ZealotKnivesHelper")
+	mod.on_setting_changed("use_custom_color_zkh_test_raider")
+
+	local breed_config = mod.indicator_settings.breed_config
+
+	H.assert_nil(breed_config.breed_color.zkh_test_raider, "use_custom_color off -> nil breed color (category fallback)")
+	H.assert_equal(breed_config.breed_color.zkh_test_bulwark, stored.breed_color_zkh_test_bulwark, "use_custom_color on -> custom color kept")
+	H.assert_equal(breed_config.category_color.elite, stored.color_elite, "category color cached from the settings snapshot")
+
+	-- End-to-end resolution through the pure config module
+	local BreedConfig = H.load("scripts/mods/ZealotKnivesHelper/core/breed_config")
+
+	H.assert_equal(BreedConfig.color("zkh_test_raider", "elite", breed_config), stored.color_elite, "BreedConfig: follows the category color when custom is off")
+	H.assert_equal(BreedConfig.color("zkh_test_bulwark", "elite", breed_config), stored.breed_color_zkh_test_bulwark, "BreedConfig: custom color wins when on")
+
+	mock_mod.get = saved_get
+end)
+
+require_stubs["scripts/utilities/breed"] = saved_breed_util
+require_stubs["scripts/settings/breed/breeds"] = saved_breeds
 
 -- ---------------------------------------------------------------------------
 -- Main-file render refresh (death-freeze fix): when the fixed frame stops

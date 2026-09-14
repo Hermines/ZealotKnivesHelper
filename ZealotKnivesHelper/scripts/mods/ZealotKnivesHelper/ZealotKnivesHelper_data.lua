@@ -18,7 +18,10 @@ local CATEGORY_DEFAULT_COLORS = {
 
 mod.category_default_colors = CATEGORY_DEFAULT_COLORS
 
---- Build one breed's setting widgets: show toggle (sub-widget: dot color)
+--- Build one breed's setting widgets: show toggle (sub-widget: "use custom
+--- color" toggle, whose sub-widget is the dot color). DMF shows a checkbox's
+--- sub-widgets only while it is checked, so unchecking "use custom color"
+--- hides the color picker and makes the dot follow the category color.
 local function create_breed_widgets(breed_name, category)
 	return {
 		setting_id = "breed_show_" .. breed_name,
@@ -27,11 +30,19 @@ local function create_breed_widgets(breed_name, category)
 		default_value = true,
 		sub_widgets = {
 			{
-				setting_id = "breed_color_" .. breed_name,
-				type = "color",
-				title = "dot_color",
-				default_value = CATEGORY_DEFAULT_COLORS[category],
-				has_alpha = false,
+				setting_id = "use_custom_color_" .. breed_name,
+				type = "checkbox",
+				title = "use_custom_color",
+				default_value = true,
+				sub_widgets = {
+					{
+						setting_id = "breed_color_" .. breed_name,
+						type = "color",
+						title = "dot_color",
+						default_value = CATEGORY_DEFAULT_COLORS[category],
+						has_alpha = false,
+					},
+				},
 			},
 		},
 	}
