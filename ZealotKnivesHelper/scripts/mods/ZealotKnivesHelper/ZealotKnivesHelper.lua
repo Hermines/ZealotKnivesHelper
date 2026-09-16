@@ -35,6 +35,7 @@ local mod_settings = {
 	require_charges         = mod:get("require_charges"),
 	visibility_check        = mod:get("visibility_check"),
 	hide_near               = mod:get("hide_near"),
+	hide_near_distance      = mod:get("hide_near_distance"),
 	show_boss               = mod:get("show_boss"),
 	color_boss              = mod:get("color_boss"),
 	show_elite              = mod:get("show_elite"),
@@ -84,6 +85,7 @@ local indicator_settings = {
 	require_charges = true,
 	visibility_check = true,
 	hide_near = true,
+	hide_near_distance = 10,
 }
 
 mod.indicator_settings = indicator_settings
@@ -104,6 +106,7 @@ local function rebuild_indicator_settings()
 	indicator_settings.require_charges = mod_settings.require_charges ~= false
 	indicator_settings.visibility_check = mod_settings.visibility_check ~= false
 	indicator_settings.hide_near = mod_settings.hide_near ~= false
+	indicator_settings.hide_near_distance = mod_settings.hide_near_distance or 10
 
 	-- Category toggles and colors
 	local category_show = indicator_settings.category_show

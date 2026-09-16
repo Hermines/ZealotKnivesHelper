@@ -134,6 +134,16 @@ local widgets = {
 				setting_id = "hide_near",
 				type = "checkbox",
 				default_value = true,
+				sub_widgets = {
+					{
+						setting_id = "hide_near_distance",
+						type = "numeric",
+						default_value = 10,
+						range = { 5, 50 },
+						unit_text = "meter",
+						decimals_number = 0,
+					},
+				},
 			},
 			{
 				setting_id = "max_angle",

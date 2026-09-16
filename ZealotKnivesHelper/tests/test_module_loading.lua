@@ -174,6 +174,7 @@ H.case("localization: tooltips use the DMF _description suffix (auto-lookup key)
 		"always_show_key",
 		"force_show_key",
 		"hide_near",
+		"hide_near_distance",
 		"use_custom_color",
 	}) do
 		H.assert_true(localization[setting_id .. "_description"] ~= nil,
@@ -291,6 +292,36 @@ H.case("data file: breed widgets nest use_custom_color (default true) above the 
 	H.assert_equal(breed_color and breed_color.default_value, mock_mod.category_default_colors.elite, "breed color default is the category default color")
 end)
 
+H.case("data file: hide_near_distance nested under hide_near (default 10, range 5-50)", function()
+	local data = H.load("scripts/mods/ZealotKnivesHelper/ZealotKnivesHelper_data")
+
+	local function find_widget(widgets, setting_id)
+		for _, widget in ipairs(widgets or {}) do
+			if widget.setting_id == setting_id then
+				return widget
+			end
+		end
+
+		return nil
+	end
+
+	local indicator_group = find_widget(data.options.widgets, "indicator_settings")
+	H.assert_true(indicator_group ~= nil, "indicator_settings group exists")
+
+	local hide_near = find_widget(indicator_group and indicator_group.sub_widgets, "hide_near")
+	H.assert_true(hide_near ~= nil, "hide_near checkbox exists")
+	H.assert_true(hide_near and hide_near.default_value == true, "hide_near still defaults to true")
+
+	-- Distance slider only shows while the parent checkbox is checked (DMF
+	-- sub-widget visibility), matching the show_lead -> lead_multiplier pattern
+	local distance = find_widget(hide_near and hide_near.sub_widgets, "hide_near_distance")
+	H.assert_true(distance ~= nil, "hide_near_distance nested under hide_near")
+	H.assert_equal(distance and distance.type, "numeric", "hide_near_distance is a numeric slider")
+	H.assert_equal(distance and distance.default_value, 10, "default 10 m preserves the pre-1.0.3 fixed behavior")
+	H.assert_equal(distance and distance.range[1], 5, "range starts at 5 m")
+	H.assert_equal(distance and distance.range[2], 50, "range ends at 50 m")
+end)
+
 H.case("main file rebuild: use_custom_color off -> nil breed color -> BreedConfig follows the category color", function()
 	local mod = get_mod("ZealotKnivesHelper")
 	local saved_get = mock_mod.get
@@ -324,6 +355,33 @@ H.case("main file rebuild: use_custom_color off -> nil breed color -> BreedConfi
 
 	H.assert_equal(BreedConfig.color("zkh_test_raider", "elite", breed_config), stored.color_elite, "BreedConfig: follows the category color when custom is off")
 	H.assert_equal(BreedConfig.color("zkh_test_bulwark", "elite", breed_config), stored.breed_color_zkh_test_bulwark, "BreedConfig: custom color wins when on")
+
+	mock_mod.get = saved_get
+end)
+
+H.case("main file rebuild: hide_near_distance flows into the settings view (nil -> 10)", function()
+	local mod = get_mod("ZealotKnivesHelper")
+	local saved_get = mock_mod.get
+	local stored = {
+		hide_near = true,
+		hide_near_distance = 25,
+	}
+
+	function mock_mod.get(_, id)
+		return stored[id]
+	end
+
+	H.load("scripts/mods/ZealotKnivesHelper/ZealotKnivesHelper")
+	mod.on_setting_changed("hide_near_distance")
+
+	H.assert_true(mod.indicator_settings.hide_near, "hide_near on")
+	H.assert_equal(mod.indicator_settings.hide_near_distance, 25, "custom radius picked up from the setting")
+
+	-- Missing value (fresh profile / older save) falls back to the shipped default
+	stored.hide_near_distance = nil
+	mod.on_setting_changed("hide_near_distance")
+
+	H.assert_equal(mod.indicator_settings.hide_near_distance, 10, "nil falls back to 10 m")
 
 	mock_mod.get = saved_get
 end)

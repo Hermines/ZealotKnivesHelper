@@ -106,6 +106,7 @@ local mock_mod = {
 		category_show = { boss = true, elite = true, special = true },
 		breed_hidden = {},
 		hide_near = true,
+		hide_near_distance = 10,
 	},
 }
 
@@ -500,6 +501,7 @@ local function with_update_settings(fn)
 		always_show = settings.always_show,
 		force_show = settings.force_show,
 		hide_near = settings.hide_near,
+		hide_near_distance = settings.hide_near_distance,
 	}
 
 	settings.max_dots = 1
@@ -511,6 +513,7 @@ local function with_update_settings(fn)
 	settings.always_show = true
 	settings.force_show = false
 	settings.hide_near = false
+	settings.hide_near_distance = 10
 
 	fn()
 
@@ -523,6 +526,7 @@ local function with_update_settings(fn)
 	settings.always_show = saved.always_show
 	settings.force_show = saved.force_show
 	settings.hide_near = saved.hide_near
+	settings.hide_near_distance = saved.hide_near_distance
 end
 
 H.case("update: incumbent hysteresis -- no flicker at the quota boundary", function()
@@ -714,6 +718,43 @@ H.case("update: hide_near -- close enemies hidden, incumbents get the edge toler
 
 		H.assert_equal(#result.targets, 1, "filter off: the close enemy is shown again")
 		H.assert_equal(result.targets[1].unit, unit_a, "the 8 m enemy is the target")
+	end)
+end)
+
+H.case("update: hide_near_distance -- the hide radius follows the setting", function()
+	with_update_settings(function()
+		Indicators.clear_cache()
+
+		local settings_view = mock_mod.indicator_settings
+		settings_view.hide_near = true
+		settings_view.hide_near_distance = 5
+
+		-- 8 m enemy: inside the default 10 m radius but outside the custom 5 m one
+		local unit_a = make_enemy(Vector3(0, 8, 1.7))
+		broadphase_units = { unit_a }
+
+		local result = Indicators.update(0.11, 700)
+
+		H.assert_equal(#result.targets, 1, "enemy at 8 m: shown with a 5 m hide radius")
+		H.assert_equal(result.targets[1].unit, unit_a, "the 8 m enemy is the target")
+
+		-- Widening the radius to 20 m hides the same enemy (clear_cache isolates the
+		-- incumbent state)
+		Indicators.clear_cache()
+		settings_view.hide_near_distance = 20
+
+		result = Indicators.update(0.11, 700.11)
+
+		H.assert_equal(#result.targets, 0, "enemy at 8 m: hidden with a 20 m hide radius")
+
+		-- A 20 m enemy sits exactly at the boundary: shown
+		local unit_b = make_enemy(Vector3(0, 20, 1.7))
+		broadphase_units = { unit_a, unit_b }
+
+		result = Indicators.update(0.11, 700.22)
+
+		H.assert_equal(#result.targets, 1, "enemy at 20 m: at the boundary, shown")
+		H.assert_equal(result.targets[1].unit, unit_b, "the 20 m enemy is the target")
 	end)
 end)
 

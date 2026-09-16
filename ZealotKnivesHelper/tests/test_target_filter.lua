@@ -92,7 +92,7 @@ H.case("should_show: incumbent edge tolerance", function()
 	H.assert_false(TargetFilter.should_show(make_entry({ angle_dot = math.cos(math.rad(34)) }), base_settings, true), "incumbent at 34 degrees beyond tolerance")
 end)
 
-H.case("should_show: hide nearby enemies (hide_near, fixed 10 m)", function()
+H.case("should_show: hide nearby enemies (hide_near, default 10 m radius)", function()
 	local s = {
 		category_show = { boss = true, elite = true, special = true },
 		breed_hidden = {},
@@ -103,7 +103,8 @@ H.case("should_show: hide nearby enemies (hide_near, fixed 10 m)", function()
 
 	-- Feature off (base_settings sets hide_near = false): close enemies shown as before
 	H.assert_true(TargetFilter.should_show(make_entry({ distance = 5 }), base_settings), "feature off: close enemy shown")
-	-- Feature on: inside the fixed 10 m radius hidden, at/beyond it shown
+	-- Feature on, no explicit distance (nil -> default 10): inside the radius hidden,
+	-- at/beyond it shown
 	H.assert_false(TargetFilter.should_show(make_entry({ distance = 9.9 }), s), "inside the hide radius: not shown")
 	H.assert_true(TargetFilter.should_show(make_entry({ distance = 10 }), s), "at the hide radius boundary: shown")
 	H.assert_true(TargetFilter.should_show(make_entry({ distance = 12 }), s), "outside the hide radius: shown")
@@ -112,6 +113,31 @@ H.case("should_show: hide nearby enemies (hide_near, fixed 10 m)", function()
 	H.assert_true(TargetFilter.should_show(make_entry({ distance = 8.5 }), s, true), "incumbent kept within tolerance")
 	H.assert_false(TargetFilter.should_show(make_entry({ distance = 7.9 }), s, true), "incumbent beyond tolerance: dropped")
 	H.assert_false(TargetFilter.should_show(make_entry({ distance = 8.5 }), s), "non-incumbent inside the radius: hidden")
+end)
+
+H.case("should_show: hide radius follows hide_near_distance", function()
+	local s = {
+		category_show = { boss = true, elite = true, special = true },
+		breed_hidden = {},
+		max_distance = 100,
+		max_angle = 30,
+		hide_near = true,
+		hide_near_distance = 5,
+	}
+
+	-- Custom 5 m radius: an 8 m enemy (inside the default 10 m) is shown
+	H.assert_true(TargetFilter.should_show(make_entry({ distance = 8 }), s), "outside the custom 5 m radius: shown")
+	H.assert_false(TargetFilter.should_show(make_entry({ distance = 4.9 }), s), "inside the custom 5 m radius: not shown")
+	H.assert_true(TargetFilter.should_show(make_entry({ distance = 5 }), s), "at the custom radius boundary: shown")
+	-- Incumbent tolerance mirrors the custom radius (5 - 2 = 3 m)
+	H.assert_true(TargetFilter.should_show(make_entry({ distance = 3.5 }), s, true), "incumbent kept within the mirrored tolerance")
+	H.assert_false(TargetFilter.should_show(make_entry({ distance = 2.9 }), s, true), "incumbent beyond the mirrored tolerance: dropped")
+
+	-- A wider radius hides enemies the default would show
+	s.hide_near_distance = 20
+
+	H.assert_false(TargetFilter.should_show(make_entry({ distance = 12 }), s), "inside the custom 20 m radius: not shown")
+	H.assert_true(TargetFilter.should_show(make_entry({ distance = 20 }), s), "at the custom 20 m boundary: shown")
 end)
 
 H.case("sort: sort_distance takes priority over distance (incumbent margin)", function()

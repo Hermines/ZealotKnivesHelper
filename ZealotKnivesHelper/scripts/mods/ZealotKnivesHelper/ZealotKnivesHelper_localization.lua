@@ -81,8 +81,16 @@ local localization = {
 		["zh-cn"] = "近距离不显示",
 	},
 	hide_near_description = {
-		en = "Do not show extra crosshairs for enemies closer than 10 m.",
-		["zh-cn"] = "开启后，与你相距小于 10 米的敌人不显示额外准星。",
+		en = "Do not show extra crosshairs for enemies closer than the distance set below.",
+		["zh-cn"] = "开启后，与你相距小于下方设置距离的敌人不显示额外准星。",
+	},
+	hide_near_distance = {
+		en = "Hide Distance",
+		["zh-cn"] = "隐藏距离",
+	},
+	hide_near_distance_description = {
+		en = "Enemies closer than this distance (from you) are not indicated. Only used while Hide Nearby Enemies is on.",
+		["zh-cn"] = "与你相距小于该距离的敌人不显示额外准星。仅在“近距离不显示”开启时生效。",
 	},
 	max_angle = {
 		en = "Max Angle",

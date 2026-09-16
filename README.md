@@ -26,8 +26,9 @@ extra dot crosshair for every **boss / elite / specialist** enemy in range, indi
 - **Display toggle & hotkeys**: "Always Show" master switch (off = no dots) with two
   keybinds — a press key that toggles Always Show in game, and a hold key that
   temporarily force-shows the dots while "Always Show" is off (release hides again).
-- **Hide nearby enemies** (on by default): no dots for enemies closer than 10 m — at
-  point-blank range the dots sit on top of the enemy and the plain crosshair is enough.
+- **Hide nearby enemies** (on by default): no dots for enemies closer than the
+  configured hide distance (5-50 m, default 10 m) — at point-blank range the dots
+  sit on top of the enemy and the plain crosshair is enough.
 - **Per-breed customization**: every enemy breed can be toggled and colored individually;
   the three categories (boss / elite / specialist) each have their own switch and default
   color. Each breed also has a "Use Custom Color" toggle — turn it off to make that breed
@@ -54,7 +55,7 @@ Configure it in-game under `Options → Mod Settings → Zealot Knives Helper`.
 | --- | --- |
 | Mod Settings | Enable toggle, debug mode |
 | Display Toggle | Always show (on by default), toggle key (press), force-show key (hold) |
-| Indicator Settings | Max distance (m), hide nearby enemies (fixed 10 m), max angle (deg), max dots, dot size/opacity, scale by distance, lead prediction + multiplier, hide when out of knives, line of sight check |
+| Indicator Settings | Max distance (m), hide nearby enemies + hide distance (5-50 m, default 10 m), max angle (deg), max dots, dot size/opacity, scale by distance, lead prediction + multiplier, hide when out of knives, line of sight check |
 | Enemy Categories | Per-category switch and color for Boss / Elite / Specialist; per-breed switch, custom-color toggle (off = follow the category color), and color |
 
 ## File Structure
@@ -152,6 +153,13 @@ under stubbed game globals.
   longer take the game down (one throttled chat line when it fires).
 
 ## Version history
+
+### 1.0.3
+
+- **Added**: configurable "Hide Distance" for the hide-nearby-enemies option - a new
+  slider (5-50 m, default 10 m) under the "Hide Nearby Enemies" checkbox. Previously
+  the radius was fixed at 10 m; upgraders keep the same 10 m behavior unless they
+  change it. (Requested by a Nexus user.)
 
 ### 1.0.2
 

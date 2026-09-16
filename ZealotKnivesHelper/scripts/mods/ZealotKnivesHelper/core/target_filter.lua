@@ -14,8 +14,10 @@
 	  breed_hidden        table   { [breed_name] = bool } (true hides that breed individually)
 	  max_distance        number  meters
 	  max_angle           number  degrees
-	  hide_near           bool    hide enemies closer than HIDE_NEAR_DISTANCE (fixed 10 m;
-	                              nil counts as on, the shipped default)
+	  hide_near           bool    hide enemies closer than the hide radius (nil counts
+	                              as on, the shipped default)
+	  hide_near_distance  number  hide radius in meters (nil falls back to the shipped
+	                              default of 10)
 ]]
 
 local TargetFilter = {}
@@ -32,8 +34,9 @@ local CATEGORY_PRIORITY = {
 local DISPLAY_EDGE_TOLERANCE_ANGLE = 2
 local DISPLAY_EDGE_TOLERANCE_DISTANCE = 2
 
--- Hide-nearby radius (meters): with hide_near on, enemies closer than this are not
--- indicated (fixed by design; at point-blank range the dots sit on top of the enemy)
+-- Hide-nearby radius fallback (meters): with hide_near on, enemies closer than the
+-- configured distance are not indicated (at point-blank range the dots sit on top
+-- of the enemy). Used when the settings view carries no explicit distance
 local HIDE_NEAR_DISTANCE = 10
 
 --- Classify breed data; returns a category name only for boss/elite/specialist, else nil
@@ -79,7 +82,7 @@ function TargetFilter.should_show(entry, settings, is_incumbent)
 		return false
 	end
 
-	local hide_near_distance = settings.hide_near ~= false and HIDE_NEAR_DISTANCE or nil
+	local hide_near_distance = settings.hide_near ~= false and (settings.hide_near_distance or HIDE_NEAR_DISTANCE) or nil
 
 	if hide_near_distance then
 		if is_incumbent then
