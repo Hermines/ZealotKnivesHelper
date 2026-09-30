@@ -22,14 +22,23 @@ local Actor = Actor
 local string_find = string.find
 local pairs = pairs
 
--- Knife weapon template name (weapon template "name" field in slot_grenade_ability)
-local KNIVES_PATTERN = "zealot_throwing_knives"
+-- Zealot throwing-knives blitz ability name (equipped-ability lookup key / charge read)
+local KNIVES_ABILITY_NAME = "zealot_throwing_knives"
 
 -- Enemy scan interval (seconds)
 local ENEMY_SCAN_INTERVAL = 0.1
 -- Adaptive throttle threshold: doubles the scan interval when a scan finds more
 -- enemies than this
 local ADAPTIVE_THROTTLE_THRESHOLD = 30
+
+-- Engine broadphase query hard limit (broadphase_system.lua BROADPHASE_CELL_RADIUS = 50):
+-- a query with a radius beyond 50 m silently returns unreliable results (no error,
+-- just an empty scan). Radii over the limit are covered by a lattice of <=50 m
+-- sub-queries, see query_broadphase below.
+local ENGINE_QUERY_LIMIT = 50
+-- Lattice spacing: the diagonal half of a 50*sqrt(2) m lattice cell is exactly 50 m,
+-- so adjacent sub-query circles (radius 50) tile the plane without gaps.
+local LATTICE_STEP = ENGINE_QUERY_LIMIT * 1.4142135623731
 
 -- Line-of-sight check throttle (seconds per unit)
 local VISIBILITY_INTERVAL = 0.15
@@ -53,6 +62,8 @@ local state = {
 	visibility_cache = {}, -- [unit] = {visible = bool, timer = number}
 	raycast_frame_budget = 0,
 	broadphase_results = {},
+	broadphase_scratch = {}, -- reused per sub-query (multi-query coverage path)
+	broadphase_seen = {}, -- unit de-duplication set (multi-query coverage path)
 }
 
 --- Reset per-session caches (releases unit references)
@@ -98,30 +109,42 @@ function Context.is_zealot(player)
 	return archetype ~= nil and archetype.name == "zealot"
 end
 
---- Weapon template of the grenade slot (slot_grenade_ability), nil when not equipped
----@param player_unit userdata
----@return table|nil
-function Context.get_grenade_weapon_template(player_unit)
-	local weapon_ext = ScriptUnit.has_extension(player_unit, "weapon_system")
-		and ScriptUnit.extension(player_unit, "weapon_system")
-
-	local weapons = weapon_ext and weapon_ext._weapons
-	local grenade_weapon = weapons and weapons["slot_grenade_ability"]
-
-	return grenade_weapon and grenade_weapon.weapon_template or nil
-end
-
---- Whether the grenade slot weapon is the Zealot throwing knives
+--- Whether the Zealot throwing-knives blitz is equipped.
+-- 1.13.0: the blitz no longer occupies slot_grenade_ability (its ability entry uses
+-- inventory_item_reference, which the ability extension no longer equips as a slot
+-- weapon), so match the equipped ability name instead of the grenade-slot weapon
+-- template. Primary path uses the game's native per-ability slot lookup (the same
+-- source as the knife action's own gate), with an equipped-abilities scan fallback.
 ---@param player_unit userdata
 ---@return boolean
 function Context.has_throwing_knives(player_unit)
-	local weapon_template = Context.get_grenade_weapon_template(player_unit)
+	local ability_ext = ScriptUnit.has_extension(player_unit, "ability_system")
+		and ScriptUnit.extension(player_unit, "ability_system")
 
-	if not weapon_template or not weapon_template.name then
+	if not ability_ext then
 		return false
 	end
 
-	return string_find(weapon_template.name, KNIVES_PATTERN) ~= nil
+	if ability_ext.ability_slot_by_ability_name then
+		if ability_ext:ability_slot_by_ability_name(KNIVES_ABILITY_NAME) then
+			return true
+		end
+	end
+
+	-- Fallback: scan the equipped ability names (old extensions / variant names)
+	if not ability_ext.equipped_abilities then
+		return false
+	end
+
+	local equipped = ability_ext:equipped_abilities()
+	local ability = equipped and equipped.grenade_ability
+	local name = ability and ability.name
+
+	if not name then
+		return false
+	end
+
+	return string_find(name, KNIVES_ABILITY_NAME, 1, true) ~= nil
 end
 
 --- Remaining knife charges (0 when the ability extension is missing or reads fail)
@@ -337,6 +360,54 @@ local function classify_and_store(unit, count)
 	return count
 end
 
+--- Broadphase range query working around the engine's 50 m query limit.
+-- Within the limit a single query runs (zero overhead). Beyond it, the range is
+-- covered by a lattice of <=50 m sub-queries offset by LATTICE_STEP whose circles
+-- tile the plane without gaps; overlapping hits are de-duplicated. Units are
+-- appended to results (never cleared), so callers must iterate 1..returned count.
+--@param broadphase userdata
+--@param origin Vector3 query centre
+--@param query_range number desired radius
+--@param enemy_side_names table category filter from side:relation_side_names
+--@param results table output array (pre-cleared by the caller)
+--@return number num_hits
+local function query_broadphase(broadphase, origin, query_range, enemy_side_names, results)
+	if query_range <= ENGINE_QUERY_LIMIT then
+		return broadphase.query(broadphase, origin, query_range, results, enemy_side_names)
+	end
+
+	local scratch = state.broadphase_scratch
+	local seen = state.broadphase_seen
+
+	table_clear(seen)
+
+	local num_results = 0
+	local rings = math.ceil((query_range - ENGINE_QUERY_LIMIT) / LATTICE_STEP)
+
+	for i = -rings, rings do
+		local offset_x = i * LATTICE_STEP
+
+		for j = -rings, rings do
+			table_clear(scratch)
+
+			local centre = Vector3(origin.x + offset_x, origin.y + j * LATTICE_STEP, origin.z)
+			local hits = broadphase.query(broadphase, centre, ENGINE_QUERY_LIMIT, scratch, enemy_side_names)
+
+			for k = 1, hits do
+				local unit = scratch[k]
+
+				if unit and not seen[unit] then
+					seen[unit] = true
+					num_results = num_results + 1
+					results[num_results] = unit
+				end
+			end
+		end
+	end
+
+	return num_results
+end
+
 --- Enumerate and pre-classify enemies (throttled)
 -- Prefers the broadphase spatial query, which only returns enemy units within the
 -- indicator range, avoiding a full traversal of all health-extension units;
@@ -387,7 +458,7 @@ function Context.update_enemies(dt)
 
 					table_clear(results)
 
-					local num_hits = broadphase.query(broadphase, from_pos, max_distance + 5, results, enemy_side_names)
+					local num_hits = query_broadphase(broadphase, from_pos, max_distance + 5, enemy_side_names, results)
 
 					-- Adaptive throttle: widen the scan interval when many enemies are cached
 					if num_hits > ADAPTIVE_THROTTLE_THRESHOLD then
