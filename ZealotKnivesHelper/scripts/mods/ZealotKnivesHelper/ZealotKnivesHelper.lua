@@ -2,15 +2,20 @@
 local mod = get_mod("ZealotKnivesHelper")
 
 --[[
-	ZealotKnivesHelper - ballistic assist crosshair for Zealot throwing knives
+	ZealotKnivesHelper - ballistic assist crosshair for throwing knives
 
-	While the Zealot has throwing knives equipped, shows extra dot crosshairs over
+	While a supported knife throw is available, shows extra dot crosshairs over
 	boss/elite/specialist enemies, indicating where to move the game crosshair to hit
 	that enemy (compensates the knife trajectory's gravity drop and air drag, with
 	optional lead prediction from target velocity). Multiple qualifying enemies in
 	range are indicated at once.
 
-	Trajectory integration replicates the game source projectile_integration.lua.
+	Supported throws:
+	  - Zealot: throwing-knives blitz (throwable while wielding any weapon)
+	  - Hive Scum (broker): dual shivs special-action throw (while the shivs are wielded)
+
+	Trajectory integration replicates the game source projectile_integration.lua,
+	with per-throw ballistic parameter presets (core/ballistics.PRESETS).
 ]]
 
 -- Global references

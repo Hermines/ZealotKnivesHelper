@@ -2,20 +2,23 @@
 	Indicator main computation (game side)
 
 	Every fixed frame:
-	  1. take the scanned enemy entries from Context (broadphase spatial query)
-	  2. filter via core/target_filter (category/breed/distance/angle, incumbents get
+	  1. gate on the player's supported knife-throw state (Context: Zealot
+	     throwing-knives blitz / Hive Scum dual shivs special throw)
+	  2. take the scanned enemy entries from Context (broadphase spatial query)
+	  3. filter via core/target_filter (category/breed/distance/angle, incumbents get
 	     edge tolerance)
-	  3. solve the trajectory pitch via core/ballistics (with air drag, per-unit cache)
-	     - optional lead prediction from target velocity (2 iterations)
-	  4. optional visibility check (dual sample-point raycasts)
-	  5. sort (specialist > elite > boss, nearest first, incumbents get a distance
+	  4. solve the trajectory pitch via core/ballistics (with air drag, per-unit cache,
+	     parameters follow the active throw mode)
+	  5. optional lead prediction from target velocity (2 iterations)
+	  6. optional visibility check (dual sample-point raycasts)
+	  7. sort (specialist > elite > boss, nearest first, incumbents get a distance
 	     margin), cap the count
-	  6. depth stack fading (core/stack_fade): markers behind a closer marker on the
+	  8. depth stack fading (core/stack_fade): markers behind a closer marker on the
 	     same sight line fade out
-	  7. targets that drop off the list linger for LINGER_TIME: kept in the output and
+	  9. targets that drop off the list linger for LINGER_TIME: kept in the output and
 	     faded linearly (marker_sync reuses their markers, avoiding delete/recreate
 	     flicker)
-	  8. output the world-space target list for draw/marker_sync to sync as engine
+	 10. output the world-space target list for draw/marker_sync to sync as engine
 	     world markers (projection/frustum/distance scaling are all
 	     handled by the engine)
 ]]
@@ -39,6 +42,13 @@ local math_sqrt = math.sqrt
 local math_abs = math.abs
 local pairs = pairs
 local table_sort = table.sort
+
+-- Ballistic parameter presets by throw mode (see core/ballistics.PRESETS). Pure
+-- data tables, safe to reference from targets across frames.
+local PARAMS_BY_THROW_MODE = {
+	zealot_blitz = Ballistics.PRESETS.zealot_throwing_knives,
+	broker_shivs = Ballistics.PRESETS.broker_dual_shivs,
+}
 
 -- Per-unit ballistic solve cache lifetime (seconds)
 local SOLVE_CACHE_INTERVAL = 0.15
@@ -122,17 +132,20 @@ local function clear_cache()
 	end
 end
 
---- Ballistic solve with cache (solves directly without caching when unit is nil)
-local function cached_solve(unit, horizontal, height, now)
+--- Ballistic solve with cache (solves directly without caching when unit is nil).
+--- params is the ballistic preset table (module-level singleton, compared by
+--- identity): a throw-mode switch (e.g. re-wield) invalidates cached solves.
+local function cached_solve(unit, horizontal, height, now, params)
 	local cached = unit and _solve_cache[unit] or nil
 
-	if cached and now - cached.t < SOLVE_CACHE_INTERVAL
+	if cached and cached.params == params
+		and now - cached.t < SOLVE_CACHE_INTERVAL
 		and math_abs(cached.horizontal - horizontal) < SOLVE_CACHE_MOVE_TOLERANCE
 		and math_abs(cached.height - height) < SOLVE_CACHE_MOVE_TOLERANCE then
 		return cached.pitch, cached.flight_time
 	end
 
-	local pitch, flight_time = Ballistics.solve(horizontal, height)
+	local pitch, flight_time = Ballistics.solve(horizontal, height, params)
 
 	if unit then
 		_solve_cache[unit] = {
@@ -141,6 +154,7 @@ local function cached_solve(unit, horizontal, height, now)
 			t = now,
 			horizontal = horizontal,
 			height = height,
+			params = params,
 		}
 	end
 
@@ -239,13 +253,15 @@ end
 	fed to the Vector3() constructor, so downstream Vector3Box.store always receives
 	a real engine Vector3.
 
+	@param params table|nil ballistic parameters (nil = Zealot knife defaults)
+
 	@return Vector3|nil aim_position world position the player crosshair should point at
 	@return number|nil flight_time flight time of the final solution
 	@return number|nil pitch trajectory pitch (reused by render-frame refresh; nil for point-blank aim)
 	@return number|nil solve_horizontal horizontal distance of the final solve (render-frame re-solve criterion)
 	@return number|nil solve_height height difference of the final solve
 ]]
-local function compute_aim_position(unit, now, origin, target_pos, target_velocity, settings)
+local function compute_aim_position(unit, now, origin, target_pos, target_velocity, settings, params)
 	local to_target = target_pos - origin
 
 	if Vector3.length_squared(to_target) < 1e-6 then
@@ -267,7 +283,7 @@ local function compute_aim_position(unit, now, origin, target_pos, target_veloci
 				return nil, nil, nil, nil, nil
 			end
 
-			local _, flight_time = cached_solve(unit, math_sqrt(to_aim.x * to_aim.x + to_aim.y * to_aim.y), to_aim.z, now)
+			local _, flight_time = cached_solve(unit, math_sqrt(to_aim.x * to_aim.x + to_aim.y * to_aim.y), to_aim.z, now, params)
 
 			if not flight_time then
 				break
@@ -292,7 +308,7 @@ local function compute_aim_position(unit, now, origin, target_pos, target_veloci
 		return Vector3(aim_target.x, aim_target.y, aim_target.z), 0, nil, nil, nil
 	end
 
-	local pitch, flight_time = cached_solve(unit, horizontal, height, now)
+	local pitch, flight_time = cached_solve(unit, horizontal, height, now, params)
 
 	if not pitch then
 		return nil, nil, nil, nil, nil
@@ -359,25 +375,25 @@ local function update(dt, t)
 		return result
 	end
 
-	if not Context.is_zealot(player) then
-		debug_stage("archetype is not zealot", main_time)
+	-- Supported throw gate: Zealot throwing-knives blitz equipped, or (Hive Scum)
+	-- a dual-shivs weapon wielded. nil = no throw available right now (weapon
+	-- switches re-run the full pipeline immediately)
+	local throw_state = Context.get_throw_state(player)
+
+	if not throw_state then
+		debug_stage("no supported knife throw", main_time)
 
 		return result
 	end
 
-	local player_unit = player.player_unit
-
-	if not Context.has_throwing_knives(player_unit) then
-		debug_stage("throwing knives not equipped", main_time)
-
-		return result
-	end
-
-	if settings.require_charges ~= false and Context.get_knives_count(player_unit) <= 0 then
+	if settings.require_charges ~= false and (throw_state.charges or 0) <= 0 then
 		debug_stage("no knives remaining", main_time)
 
 		return result
 	end
+
+	local ballistic_params = PARAMS_BY_THROW_MODE[throw_state.mode] or Ballistics.DEFAULT_PARAMS
+	local player_unit = player.player_unit
 
 	Context.update_enemies(dt)
 
@@ -454,7 +470,7 @@ local function update(dt, t)
 
 					local velocity = settings.show_lead ~= false and get_target_velocity(unit) or nil
 					local aim_position, flight_time, pitch, solve_horizontal, solve_height =
-						compute_aim_position(unit, t, origin, target_pos, velocity, settings)
+						compute_aim_position(unit, t, origin, target_pos, velocity, settings, ballistic_params)
 
 					if aim_position then
 						targets[#targets + 1] = {
@@ -479,6 +495,9 @@ local function update(dt, t)
 							flight_time = flight_time,
 							solve_horizontal = solve_horizontal,
 							solve_height = solve_height,
+							-- Ballistic params preset used for this solve (plain data table;
+							-- the render-frame re-solve must use the same ballistics)
+							params = ballistic_params,
 							-- Scalar velocity table {x,y,z} (see get_target_velocity), engine
 							-- userdata is not kept
 							velocity = velocity,
@@ -693,7 +712,9 @@ local function refresh_positions(targets, origin_override)
 				if target.pitch
 					and (math_abs(horizontal - (target.solve_horizontal or horizontal)) > RENDER_SOLVE_MOVE_TOLERANCE
 						or math_abs(height - (target.solve_height or height)) > RENDER_SOLVE_MOVE_TOLERANCE) then
-					local pitch, flight_time = Ballistics.solve(horizontal, height)
+					-- Re-solve with the target's own ballistic params (nil = Zealot knife
+					-- defaults, matching targets built before the params field existed)
+					local pitch, flight_time = Ballistics.solve(horizontal, height, target.params)
 
 					if pitch then
 						target.pitch = pitch

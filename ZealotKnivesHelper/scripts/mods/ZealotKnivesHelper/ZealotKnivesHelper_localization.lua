@@ -13,8 +13,8 @@ local localization = {
 		["zh-cn"] = "狂信徒飞刀助手",
 	},
 	mod_description = {
-		en = "Shows extra dot crosshairs indicating where to move your crosshair to hit enemies with Zealot throwing knives (gravity & drag compensated, lead prediction optional)",
-		["zh-cn"] = "狂信徒装备飞刀投掷物时，显示额外的点状准星，指示要命中该敌人需要将游戏准星移动到的位置（已补偿重力下坠与空气阻力，可选提前量预测）",
+		en = "Shows extra dot crosshairs indicating where to move your crosshair to hit enemies with throwing knives (gravity & drag compensated, lead prediction optional). Supports the Zealot throwing-knives blitz and the Hive Scum dual shivs special throw.",
+		["zh-cn"] = "装备飞刀投掷物时，显示额外的点状准星，指示要命中该敌人需要将游戏准星移动到的位置（已补偿重力下坠与空气阻力，可选提前量预测）。支持狂信徒飞刀与渣滓双刀特殊动作投掷。",
 	},
 
 	-- mod_settings
@@ -145,8 +145,8 @@ local localization = {
 		["zh-cn"] = "无飞刀余量时隐藏",
 	},
 	require_charges_description = {
-		en = "Hide all extra crosshairs when no throwing knives remain.",
-		["zh-cn"] = "飞刀余量为零时隐藏全部额外准星。",
+		en = "Hide all extra crosshairs when no throwing knives remain (Zealot blitz charges, or the Hive Scum shivs' special charges).",
+		["zh-cn"] = "飞刀余量为零时隐藏全部额外准星（狂信徒 blitz 充能，或渣滓双刀的特殊动作充能）。",
 	},
 	visibility_check = {
 		en = "Line of Sight Check",

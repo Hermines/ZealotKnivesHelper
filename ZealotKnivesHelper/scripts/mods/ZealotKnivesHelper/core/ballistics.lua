@@ -17,23 +17,47 @@
 
 local Ballistics = {}
 
--- Default ballistic parameters of the Zealot throwing knife
+-- Shared simulation constants (identical for every supported projectile)
+local DT = 1 / 52 -- simulation step, matches the game fixed frame (tick_rate = 52,
+-- default_game_parameters.lua; fixed_time_step = 1/tick_rate in
+-- state_gameplay.lua drives projectile integration one step per frame)
+local MAX_STEPS = 420 -- max steps per simulation (about 7 seconds)
+local MASS = 0.8
+local RADIUS = 0.2
+
+local function make_params(speed, gravity, drag_coefficient, air_density)
+	return {
+		speed = speed,
+		gravity = gravity,
+		drag_coefficient = drag_coefficient,
+		air_density = air_density,
+		mass = MASS,
+		radius = RADIUS,
+		dt = DT,
+		max_steps = MAX_STEPS,
+	}
+end
+
+-- Ballistic parameters per supported throw source.
 -- Source: scripts/settings/projectile_locomotion/templates/grenade_projectile_locomotion_templates.lua
---   zealot_throwing_knife_projectile:
+--   zealot_throwing_knife_projectile (blitz):
 --     spawn_projectile_parameters.initial_speed = 75
 --     integrator_parameters.gravity = 17.5, drag_coefficient = 0.2,
---     air_density = 0.7, mass = 0.8, radius = 0.2
-local DEFAULT_PARAMS = {
-	speed = 75,
-	gravity = 17.5,
-	drag_coefficient = 0.2,
-	air_density = 0.7,
-	mass = 0.8,
-	radius = 0.2,
-	dt = 1 / 52, -- simulation step, matches the game fixed frame (tick_rate = 52,
-	             -- default_game_parameters.lua; fixed_time_step = 1/tick_rate in
-	             -- state_gameplay.lua drives projectile integration one step per frame)
-	max_steps = 420, -- max steps per simulation (about 7 seconds)
+--     air_density = 0.7
+--   dual_shivs_throwing_knife_projectile (Hive Scum dual shivs special-action
+--   throw, shared by both dual_shivs_p1_m1 / m2):
+--     initial_speed = 65, gravity = 22.5, drag_coefficient = 0.25,
+--     air_density = 0.8
+-- Default = Zealot throwing knife (backwards-compatible default of solve())
+local DEFAULT_PARAMS = make_params(75, 17.5, 0.2, 0.7)
+local BROKER_DUAL_SHIVS_PARAMS = make_params(65, 22.5, 0.25, 0.8)
+
+Ballistics.DEFAULT_PARAMS = DEFAULT_PARAMS
+
+-- Presets by throw mode string (game/context.get_throw_state -> game/indicators)
+Ballistics.PRESETS = {
+	zealot_throwing_knives = DEFAULT_PARAMS,
+	broker_dual_shivs = BROKER_DUAL_SHIVS_PARAMS,
 }
 
 local atan2 = math.atan2 or math.atan

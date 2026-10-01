@@ -2,8 +2,8 @@
 	Game state context (depends on game engine APIs)
 
 	Responsibilities:
-	  - local player / zealot archetype checks
-	  - throwing knife equipment and remaining charges
+	  - local player archetype checks and supported knife-throw state
+	    (Zealot throwing-knives blitz / Hive Scum dual shivs special throw)
 	  - enemy enumeration with category pre-classification (throttled cache)
 	  - access to camera / trajectory origin / visibility raycasts and other game resources
 ]]
@@ -24,6 +24,12 @@ local pairs = pairs
 
 -- Zealot throwing-knives blitz ability name (equipped-ability lookup key / charge read)
 local KNIVES_ABILITY_NAME = "zealot_throwing_knives"
+
+-- Hive Scum dual shivs weapon templates ("dual_shivs_p1_m1" / "dual_shivs_p1_m2"):
+-- the special action throw (action_special_throw, kind "weapon_throw") uses the
+-- same dual_shivs_throwing_knife_projectile locomotion on both variants, so a
+-- prefix match covers them and future variants sharing that projectile.
+local DUAL_SHIVS_TEMPLATE_PREFIX = "dual_shivs"
 
 -- Enemy scan interval (seconds)
 local ENEMY_SCAN_INTERVAL = 0.1
@@ -85,28 +91,40 @@ function Context.get_local_player()
 	return nil
 end
 
---- Whether the player is a Zealot (archetype name "zealot")
----@param player table
----@return boolean
-function Context.is_zealot(player)
+--- Archetype name of the local player ("zealot" / "broker" / ...), nil when unknown
+local function player_archetype_name(player)
 	local player_unit = player and player.player_unit
 
 	if not player_unit then
-		return false
+		return nil
 	end
 
 	local data_ext = ScriptUnit.has_extension(player_unit, "unit_data_system")
 		and ScriptUnit.extension(player_unit, "unit_data_system")
 
 	if data_ext and data_ext.archetype_name then
-		return data_ext:archetype_name() == "zealot"
+		return data_ext:archetype_name()
 	end
 
 	-- Fallback: read the player profile directly
 	local profile = player._profile
 	local archetype = profile and profile.archetype
 
-	return archetype ~= nil and archetype.name == "zealot"
+	return archetype and archetype.name or nil
+end
+
+--- Whether the player is a Zealot (archetype name "zealot")
+---@param player table
+---@return boolean
+function Context.is_zealot(player)
+	return player_archetype_name(player) == "zealot"
+end
+
+--- Whether the player is a Hive Scum (archetype name "broker")
+---@param player table
+---@return boolean
+function Context.is_broker(player)
+	return player_archetype_name(player) == "broker"
 end
 
 --- Whether the Zealot throwing-knives blitz is equipped.
@@ -161,6 +179,74 @@ function Context.get_knives_count(player_unit)
 	local ok, charges = pcall(ability_ext.remaining_ability_charges, ability_ext, "grenade_ability")
 
 	return (ok and charges) or 0
+end
+
+--- Hive Scum dual-shivs special-throw state (nil when the wielded weapon is not a
+--- dual shivs weapon). The throw is a weapon special action, so it is only
+--- available while the shivs are wielded; the remaining charges live on the
+--- weapon slot component's num_special_charges (fed by tagging enemies), not on
+--- the ability extension.
+---@param player_unit userdata
+---@return table|nil { mode = "broker_shivs", charges = number }
+local function get_broker_shivs_state(player_unit)
+	local weapon_ext = ScriptUnit.has_extension(player_unit, "weapon_system")
+		and ScriptUnit.extension(player_unit, "weapon_system")
+	local weapon_template = weapon_ext and weapon_ext:weapon_template()
+	local template_name = weapon_template and weapon_template.name
+
+	if type(template_name) ~= "string"
+		or not string_find(template_name, DUAL_SHIVS_TEMPLATE_PREFIX, 1, true) then
+		return nil
+	end
+
+	local data_ext = ScriptUnit.has_extension(player_unit, "unit_data_system")
+		and ScriptUnit.extension(player_unit, "unit_data_system")
+	local inventory = data_ext and data_ext:read_component("inventory")
+	local wielded_slot = inventory and inventory.wielded_slot
+	local slot_component = (data_ext and wielded_slot and wielded_slot ~= "none")
+		and data_ext:read_component(wielded_slot)
+	local charges = slot_component and slot_component.num_special_charges
+
+	return {
+		mode = "broker_shivs",
+		charges = charges or 0,
+	}
+end
+
+--- Supported knife-throw state of the local player (nil when no throw is
+--- available right now):
+---   - Zealot: throwing-knives blitz equipped (throwable while wielding any
+---     weapon); charges = remaining ability charges
+---   - Hive Scum (broker): dual-shivs weapon wielded (special action throw);
+---     charges = the weapon slot's num_special_charges
+--- mode selects the ballistic parameter preset in game/indicators (kept as a
+--- string so this module stays free of core/ imports). The returned table holds
+--- only scalars/strings, safe to cross frames.
+---@param player table
+---@return table|nil { mode = "zealot_blitz"|"broker_shivs", charges = number }
+function Context.get_throw_state(player)
+	if not player or not player.player_unit then
+		return nil
+	end
+
+	if Context.is_zealot(player) then
+		local player_unit = player.player_unit
+
+		if not Context.has_throwing_knives(player_unit) then
+			return nil
+		end
+
+		return {
+			mode = "zealot_blitz",
+			charges = Context.get_knives_count(player_unit),
+		}
+	end
+
+	if Context.is_broker(player) then
+		return get_broker_shivs_state(player.player_unit)
+	end
+
+	return nil
 end
 
 --- First-person position (trajectory origin, matching the game's spawn_projectile

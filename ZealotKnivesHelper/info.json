@@ -1,7 +1,7 @@
 {
     "name": "Zealot Knives Helper",
-    "description": "Shows extra dot crosshairs indicating where to aim to hit enemies with Zealot throwing knives (gravity & drag compensated)",
-    "version": "1.0.4",
+    "description": "Shows extra dot crosshairs indicating where to aim to hit enemies with throwing knives (gravity & drag compensated). Supports the Zealot throwing-knives blitz and the Hive Scum dual shivs special throw.",
+    "version": "1.1.0",
     "author": "hermines",
     "homepage": "https://www.nexusmods.com/warhammer40kdarktide/mods/1305",
     "source": "",
